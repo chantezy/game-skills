@@ -34,3 +34,9 @@ for dir in "$REPO_ROOT"/*/; do
 done
 
 echo "=== 同步完成：$COUNT 个技能 ==="
+
+# 同步 README.md（npm 包页面展示用）
+if [ -f "$REPO_ROOT/README.md" ]; then
+  cp "$REPO_ROOT/README.md" "$MCP_SERVER_DIR/README.md"
+  echo "README.md 已同步到 mcp-server/"
+fi

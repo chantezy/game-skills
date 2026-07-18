@@ -1,10 +1,17 @@
-name: Publish MCP Server (Trusted Publishing)
+name: Publish MCP Server (Trusted Publisher)
 
-# 使用 npm 官方推荐的 Trusted Publishing（基于 OIDC 的 --provenance 发布）。
-# 说明：npm 的 --provenance 会通过 OIDC 生成 Sigstore 签名 + 透明日志证明，
-#       但发布身份认证仍需 NODE_AUTH_TOKEN（npm 尚不支持完全无 token 发布，
-#       不同于 PyPI Trusted Publishers）。
-# 官方文档：https://docs.npmjs.com/generating-provenance-statements
+# 使用 npm 官方推荐的 Trusted Publishing（OIDC 无 token 发布）。
+# 官方文档：https://docs.npmjs.com/trusted-publishers
+#
+# 前置条件（必须先在 npmjs.com 配置好 Trusted Publisher）：
+#   包设置 → Settings → Trusted Publisher → 添加 GitHub Actions
+#     - Organization: chantezy
+#     - Repository: game-skills
+#     - Workflow filename: publish-mcp.yml  ← 必须和本文件名完全一致
+#     - Allowed actions: npm publish
+#
+# 配置好之后，CI 就能用 OIDC 短期令牌发布，无需 NPM_TOKEN。
+# provenance 会自动生成（不需要 --provenance flag）。
 
 on:
   push:
@@ -15,14 +22,15 @@ on:
       - 'mcp-server/scripts/**'
       - 'game-*/**'
       - '*/SKILL.md'
-  workflow_dispatch:  # 支持手动触发，便于调试
+  workflow_dispatch:  # 手动触发，便于调试
+
+permissions:
+  id-token: write  # Trusted Publisher 核心：OIDC 令牌权限
+  contents: write  # 回写版本号到仓库
 
 jobs:
   publish:
-    runs-on: ubuntu-latest  # 必须用 GitHub-hosted runner 才能启用 provenance
-    permissions:
-      contents: write       # 回写版本号到仓库
-      id-token: write       # Trusted Publishing 核心：OIDC 令牌权限
+    runs-on: ubuntu-latest  # 必须用 GitHub-hosted runner（Trusted Publisher 不支持 self-hosted）
 
     steps:
       - name: Checkout
@@ -31,19 +39,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'          # Node 20 自带 npm 10，支持 OIDC
+          # Trusted Publisher 要求 Node ≥ 22.14.0（自带 npm 11.5.1+）
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+          # 发布构建禁用缓存，保证依赖可重现
           cache: 'npm'
           cache-dependency-path: mcp-server/package-lock.json
-
-      # 保险起见：强制升级 npm 到最新版，避免 OIDC 兼容性问题
-      # 见 https://github.com/npm/cli/issues/8816
-      - name: Ensure npm supports provenance
-        run: |
-          echo "Node: $(node --version)"
-          echo "npm before: $(npm --version)"
-          npm install -g npm@latest
-          echo "npm after: $(npm --version)"
 
       - name: Sync skills into mcp-server
         run: cd mcp-server && bash scripts/sync-skills.sh
@@ -56,18 +57,18 @@ jobs:
           cd mcp-server
           npm version patch --no-git-tag-version
 
-      # 可选：dry-run 验证（不实际发布，仅检查可发布性）
+      # 可选：dry-run 验证（不实际发布）
       - name: Verify publish readiness (dry-run)
         run: cd mcp-server && npm publish --dry-run --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        continue-on-error: true  # dry-run 失败不阻塞后续发布
+        continue-on-error: true  # dry-run 失败不阻塞
 
-      # Trusted Publishing 核心步骤：--provenance 生成 OIDC 签名证明
-      - name: Publish to npm with provenance
-        run: cd mcp-server && npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Trusted Publisher 核心步骤：
+      # - npm CLI 自动检测到 OIDC 环境（GitHub Actions + id-token:write）
+      # - 向 npm 换取短期发布令牌（几分钟有效，仅限当前 workflow）
+      # - 发布后自动生成 provenance 签名证明
+      # - 注意：不需要 --provenance flag，也不需要 NODE_AUTH_TOKEN
+      - name: Publish to npm with Trusted Publisher (OIDC)
+        run: cd mcp-server && npm publish --access public
 
       - name: Commit version bump
         run: |
