@@ -1,0 +1,78 @@
+name: Publish MCP Server (Trusted Publishing)
+
+# 使用 npm 官方推荐的 Trusted Publishing（基于 OIDC 的 --provenance 发布）。
+# 说明：npm 的 --provenance 会通过 OIDC 生成 Sigstore 签名 + 透明日志证明，
+#       但发布身份认证仍需 NODE_AUTH_TOKEN（npm 尚不支持完全无 token 发布，
+#       不同于 PyPI Trusted Publishers）。
+# 官方文档：https://docs.npmjs.com/generating-provenance-statements
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp-server/src/**'
+      - 'mcp-server/package.json'
+      - 'mcp-server/scripts/**'
+      - 'game-*/**'
+      - '*/SKILL.md'
+  workflow_dispatch:  # 支持手动触发，便于调试
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest  # 必须用 GitHub-hosted runner 才能启用 provenance
+    permissions:
+      contents: write       # 回写版本号到仓库
+      id-token: write       # Trusted Publishing 核心：OIDC 令牌权限
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'          # Node 20 自带 npm 10，支持 OIDC
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+          cache-dependency-path: mcp-server/package-lock.json
+
+      # 保险起见：强制升级 npm 到最新版，避免 OIDC 兼容性问题
+      # 见 https://github.com/npm/cli/issues/8816
+      - name: Ensure npm supports provenance
+        run: |
+          echo "Node: $(node --version)"
+          echo "npm before: $(npm --version)"
+          npm install -g npm@latest
+          echo "npm after: $(npm --version)"
+
+      - name: Sync skills into mcp-server
+        run: cd mcp-server && bash scripts/sync-skills.sh
+
+      - name: Install & build
+        run: cd mcp-server && npm ci && npm run build
+
+      - name: Bump patch version
+        run: |
+          cd mcp-server
+          npm version patch --no-git-tag-version
+
+      # 可选：dry-run 验证（不实际发布，仅检查可发布性）
+      - name: Verify publish readiness (dry-run)
+        run: cd mcp-server && npm publish --dry-run --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        continue-on-error: true  # dry-run 失败不阻塞后续发布
+
+      # Trusted Publishing 核心步骤：--provenance 生成 OIDC 签名证明
+      - name: Publish to npm with provenance
+        run: cd mcp-server && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add mcp-server/package.json mcp-server/package-lock.json
+          git commit -m "chore: bump mcp-server version [skip ci]" || true
+          git push

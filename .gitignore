@@ -1,0 +1,5 @@
+node_modules/
+.DS_Store
+*.log
+mcp-server/skills/
+mcp-server/dist/

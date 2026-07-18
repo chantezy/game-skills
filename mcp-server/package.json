@@ -1,0 +1,51 @@
+{
+  "name": "@chantezy/mcp-game-design",
+  "version": "1.0.0",
+  "description": "Game design document generation MCP server — structured workflow tools for AI agents, covering creative discussion, system/level/combat/narrative/character/numerical design, art production, QA, and programming. Includes an Intent Router for fast trigger-based skill matching and an in-memory cache for repeat calls.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "mcp-game-design": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "skills"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "sync": "bash scripts/sync-skills.sh",
+    "prepublishOnly": "npm run sync && npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "game-design",
+    "gdd",
+    "game-development",
+    "skills",
+    "ai-agent",
+    "intent-router",
+    "model-context-protocol"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chantezy/game-skills.git",
+    "directory": "mcp-server"
+  },
+  "homepage": "https://github.com/chantezy/game-skills#readme",
+  "bugs": {
+    "url": "https://github.com/chantezy/game-skills/issues"
+  },
+  "author": "",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.22.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  }
+}
