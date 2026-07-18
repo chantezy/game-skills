@@ -22,7 +22,7 @@ game-skills/
 ├── game-full-workflow/         ← 全流程编排（GDD组装）
 ├── mcp-server/                 ← MCP Server（通用技能加载器 + Intent Router）
 │   ├── src/
-│   │   ├── index.ts            ← MCP 工具定义（route_intent / list_skills / get_skill / get_reference / cache_stats）
+│   │   ├── index.ts            ← MCP 工具定义（route_intent / list_skills / get_skill / get_reference）
 │   │   └── skill-loader.ts     ← 技能加载、LRU 缓存、意图路由算法
 │   ├── scripts/
 │   │   └── sync-skills.sh
@@ -67,7 +67,6 @@ trigger: "当用户需要设计战斗系统、攻击手感、技能连招、Boss
 | `list_skills` | 列出所有技能及触发条件 | 需要浏览全部技能时 |
 | `get_skill` | 获取完整 `SKILL.md` 内容（命中内存缓存时免重复读取） | 匹配后取完整工作流 |
 | `get_reference` | 获取技能的参考资料文件 | 需要详细领域知识时 |
-| `cache_stats` | 查看内存缓存状态（调试用） | 排查缓存命中情况 |
 
 ### 推荐使用流程
 
