@@ -76,11 +76,6 @@ export function cacheStats() {
   };
 }
 
-export function clearCache(): void {
-  skillDetailCache.clear();
-  skillDetailOrder.length = 0;
-}
-
 // ----- Frontmatter parsing -----
 function parseFrontmatter(content: string): { fm: Frontmatter; body: string } {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);

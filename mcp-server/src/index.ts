@@ -8,8 +8,6 @@ import {
   getSkill,
   getReference,
   routeIntent,
-  cacheStats,
-  clearCache,
 } from "./skill-loader.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
