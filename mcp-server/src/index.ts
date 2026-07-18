@@ -7,7 +7,6 @@ import {
   listSkills,
   getSkill,
   getReference,
-  routeIntent,
 } from "./skill-loader.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
@@ -21,80 +20,12 @@ const server = new McpServer({
   version: pkg.version,
 });
 
-// ----- Tool: route_intent (Intent Router) -----
-// Fast skill matching based on trigger + description. Does NOT load full skill content.
-// Returns: best match (high confidence), top-3 candidates (medium confidence), or all skills (fallback).
-server.tool(
-  "route_intent",
-  "意图路由器：根据用户输入快速匹配最合适的技能。仅基于 trigger + description 做轻量级关键词匹配，不加载完整 Skill 内容。匹配策略：高置信度直接返回最佳技能，中置信度返回 top-3 候选，无法匹配时返回所有技能列表让用户选择。优先调用此工具做快速匹配，匹配后再调用 get_skill 获取完整内容。",
-  {
-    user_intent: z
-      .string()
-      .describe("用户的原始意图描述或问题文本，例如 '我想设计一个背包系统'"),
-  },
-  async ({ user_intent }) => {
-    const result = routeIntent(user_intent);
-
-    if (result.matched && result.best) {
-      // High confidence match
-      const best = result.best;
-      const text =
-        `# 意图匹配结果：高置信度 ✅\n\n` +
-        `**输入意图：** ${user_intent}\n\n` +
-        `**推荐技能：** \`${best.name}\`\n\n` +
-        `**触发场景：** ${best.trigger || "(未设置)"}\n\n` +
-        `**描述：** ${best.description}\n\n` +
-        `---\n` +
-        `匹配分数：${result.scores?.[0]?.score ?? "N/A"}，命中关键词：${result.scores?.[0]?.matchedKeywords.join("、") || "无"}\n\n` +
-        `**下一步：** 调用 \`get_skill\` 工具，参数 name="${best.name}" 获取完整工作流指令。`;
-
-      return {
-        content: [{ type: "text" as const, text }],
-      };
-    }
-
-    if (!result.fallback && result.candidates.length > 0) {
-      // Medium confidence: top-3 candidates
-      const lines = result.candidates.map((s, i) => {
-        const score = result.scores?.[i];
-        return `### ${i + 1}. \`${s.name}\`\n` +
-          `- **触发场景：** ${s.trigger || "(未设置)"}\n` +
-          `- **描述：** ${s.description}\n` +
-          `- **匹配分数：** ${score?.score ?? "N/A"}，命中：${score?.matchedKeywords.join("、") || "无"}`;
-      });
-      const text =
-        `# 意图匹配结果：中置信度 ⚠️\n\n` +
-        `**输入意图：** ${user_intent}\n\n` +
-        `找到 ${result.candidates.length} 个候选技能，请根据具体需求选择：\n\n` +
-        lines.join("\n\n") +
-        `\n\n---\n**下一步：** 调用 \`get_skill\` 工具，参数 name=\"<选中的技能名>\" 获取完整工作流指令。`;
-
-      return {
-        content: [{ type: "text" as const, text }],
-      };
-    }
-
-    // Fallback: no match, return all skills
-    const lines = result.candidates.map((s) => {
-      return `- **${s.name}** — ${s.trigger || s.description}`;
-    });
-    const text =
-      `# 意图匹配结果：未找到匹配（兜底策略）\n\n` +
-      `**输入意图：** ${user_intent}\n\n` +
-      `无法明确匹配到具体技能，以下是全部 ${result.total} 个可用技能，请选择最合适的一个：\n\n` +
-      lines.join("\n") +
-      `\n\n---\n**下一步：** 调用 \`get_skill\` 工具，参数 name=\"<选中的技能名>\" 获取完整工作流指令。`;
-
-    return {
-      content: [{ type: "text" as const, text }],
-    };
-  },
-);
-
 // ----- Tool: list_skills -----
+// Main entry point: returns all skills with name + description.
+// LLM selects the best match based on description (When to use + capabilities).
 server.tool(
   "list_skills",
-  "列出所有可用的游戏设计技能及其触发条件。使用策略：1. 优先调用 route_intent 做意图匹配。2. 当用户明确指定技能时，直接调用 get_skill。3. 仅当需要浏览全部技能时才调用此工具。",
+  "列出所有可用的游戏设计技能及其描述。这是首选入口：先调用此工具查看所有技能的名称和“何时使用”描述，根据用户意图选择最匹配的技能后，再调用 get_skill 获取完整工作流。每个技能的 description 已包含“何时使用 + 能力说明 + 边界”三部分，可直接据此选择。",
   {},
   async () => {
     const skills = listSkills();
@@ -111,13 +42,13 @@ server.tool(
     }
 
     const lines = skills.map(
-      (s) => `- **${s.name}** — ${s.trigger || "查看描述了解适用场景"}`,
+      (s) => `- **${s.name}** — ${s.description || "(未设置描述)"}`,
     );
     const text =
       `# 可用游戏设计技能 (${skills.length})\n\n` +
-      `请根据用户意图，选择最匹配的 skill 调用 \`get_skill\`：\n\n` +
+      `根据用户意图，从以下技能中选择最匹配的一个，然后调用 \`get_skill\` 获取完整工作流指令：\n\n` +
       lines.join("\n") +
-      `\n\n---\n使用 \`get_skill\` 工具并提供技能名称来获取完整的工作流程指令。\n使用 \`route_intent\` 工具传入用户意图，可自动匹配最合适的技能。`;
+      `\n\n---\n选择依据：每个技能的 description 包含“何时使用”（适用场景）、“能力”（产出内容）、“边界”（职责划分）三部分。若用户意图与多个技能相关，选择最核心的一个；若无法确定，可让用户明确具体方向。`;
 
     return {
       content: [{ type: "text" as const, text }],
@@ -128,9 +59,9 @@ server.tool(
 // ----- Tool: get_skill -----
 server.tool(
   "get_skill",
-  "获取指定技能的完整 SKILL.md 内容，包括工作流程、模块路由、输出模板和可用的参考文件列表。已加载的技能会在内存中缓存，重复调用不会重新读取磁盘。调用后按 SKILL.md 中的工作流路由表引导用户使用各模块。",
+  "获取指定技能的完整 SKILL.md 内容，包括工作流程、模块路由、输出模板和可用的参考文件列表。已加载的技能会在内存中缓存，重复调用不会重新读取磁盘。使用前请先调用 list_skills 查看所有可用技能，根据 description 选择最匹配的技能名称。",
   {
-    name: z.string().describe("技能名称，如 'game-combat-design'"),
+    name: z.string().describe("技能名称，如 'game-combat-design'。从 list_skills 的返回结果中选择"),
   },
   async ({ name }) => {
     const skill = getSkill(name);
@@ -207,7 +138,7 @@ async function main(): Promise<void> {
       `[mcp-game-design] 已加载 ${skills.length} 个技能：${skills.map((s) => s.name).join(", ")}`,
     );
     console.error(
-      `[mcp-game-design] Intent Router 已就绪（route_intent 工具）`,
+      `[mcp-game-design] 共 3 个工具：list_skills / get_skill / get_reference`,
     );
   }
 }
