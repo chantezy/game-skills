@@ -68,14 +68,6 @@ function cacheGet(key: string): SkillDetail | undefined {
   return value;
 }
 
-export function cacheStats() {
-  return {
-    size: skillDetailCache.size,
-    keys: Array.from(skillDetailCache.keys()),
-    max: SKILL_CACHE_MAX,
-  };
-}
-
 // ----- Frontmatter parsing -----
 function parseFrontmatter(content: string): { fm: Frontmatter; body: string } {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
