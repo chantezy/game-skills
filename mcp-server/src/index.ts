@@ -153,13 +153,6 @@ server.tool(
         ? `\n\n---\n## 可用参考资料\n${skill.references.map((r) => `- ${r}`).join("\n")}\n\n使用 \`get_reference\` 工具并提供技能名称和参考资料名称来读取。`
         : "";
 
-    if (process.env.DEBUG) {
-      const stats = cacheStats();
-      console.error(
-        `[mcp-game-design] get_skill("${name}") — cache size: ${stats.size}/${stats.max}`,
-      );
-    }
-
     return {
       content: [
         {
@@ -200,24 +193,6 @@ server.tool(
 
     return {
       content: [{ type: "text" as const, text: content }],
-    };
-  },
-);
-
-// ----- Tool: cache_stats (debug) -----
-server.tool(
-  "cache_stats",
-  "查看技能缓存状态（调试用）。返回当前内存中已缓存的技能数量和名称列表。已加载的技能会保留在缓存中，重复调用 get_skill 不会重新读取磁盘。",
-  {},
-  async () => {
-    const stats = cacheStats();
-    const text =
-      `# 技能缓存状态\n\n` +
-      `- **已缓存：** ${stats.size} / ${stats.max}\n` +
-      `- **缓存键：** ${stats.keys.length > 0 ? stats.keys.join("、") : "(空)"}`;
-
-    return {
-      content: [{ type: "text" as const, text }],
     };
   },
 );
