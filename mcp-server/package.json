@@ -1,6 +1,6 @@
 {
   "name": "@chantezy/mcp-game-design",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Game design document generation MCP server — structured workflow tools for AI agents, covering creative discussion, system/level/combat/narrative/character/numerical design, art production, QA, and programming. Includes an Intent Router for fast trigger-based skill matching and an in-memory cache for repeat calls.",
   "type": "module",
   "main": "./dist/index.js",
