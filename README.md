@@ -2,7 +2,7 @@
 
 游戏策划案 AI 生成工作流技能集合。通过 MCP 协议暴露给 AI 智能体使用,覆盖从创意框架完善到完整 GDD 输出的全流程。**任意阶段可介入,不强制从头到尾走完整流程。**
 
-内置 **技能加载器**:每个技能的 `description` 已包含"何时使用 + 能力说明 + 边界"三部分,LLM 可直接根据 description 选择最匹配的技能;重复调用同一技能时通过内存缓存避免重复读取磁盘。
+内置 **技能加载器**:每个技能的 `description` 已包含"何时使用 + 边界 + 能力"三部分,LLM 可直接根据 description 选择最匹配的技能;`list_skills` 还会附带一份 `ROUTING.md` 路由表,用于裁决描述之间的冲突和多技能组合顺序;重复调用同一技能时通过内存缓存避免重复读取磁盘。
 
 ## 设计理念
 
@@ -35,6 +35,7 @@
 
 ```
 game-skills/
+├── ROUTING.md                  ← 技能路由表(强歧义对 / 组合顺序 / 执行前计划确认)
 ├── game-creative-discussion/   ← 游戏创意框架完善工具(三层递进:策略分析→创意发散→功能规划)
 ├── game-system-design/         ← 系统策划(6大知识库,只定义决策项)
 ├── game-level-design/          ← 关卡策划(节奏/空间/难度)
@@ -58,12 +59,12 @@ game-skills/
     └── publish-mcp.yml         ← Push 到 main 自动同步 + 发布到 npm
 ```
 
-每个技能目录包含一个自包含的 `SKILL.md`,frontmatter 必须包含 `name` / `description` 两个字段(`description` 采用"何时使用 + 能力说明 + 边界"三段式写法,让 LLM 可直接据此选择技能):
+每个技能目录包含一个自包含的 `SKILL.md`,frontmatter 必须包含 `name` / `description` 两个字段。`description` 采用"何时使用 + **边界** + 能力"三段式写法,**边界必须靠前**——部分客户端会把过长的 description 截断,边界放在后面会丢失,导致本技能被误选:
 
 ```yaml
 ---
 name: "game-combat-design"
-description: "何时使用:需要设计战斗系统、攻击手感、技能连招、Boss战模式或伤害公式的结构设计时。能力:基于攻击手感参数(前摇/后摇/命中停顿/击退)、Boss战模式和伤害公式标准形式产出可落地的战斗策划案。边界:只定义设计意图,具体数值反推归 game-numerical-design。"
+description: "何时使用:设计战斗系统、攻击手感、连招、Boss 战或伤害公式的结构。边界:只定义设计意图,数值反推归 game-numerical-design。能力:攻击手感参数(前摇/后摇/命中停顿/击退)、Boss 模式与伤害公式标准形式。"
 ---
 ```
 
@@ -83,7 +84,7 @@ description: "何时使用:需要设计战斗系统、攻击手感、技能连�
 | game-tech-implementation | 需要将策划案转化为代码、设计配置表结构、定义状态机、确定网络同步策略、选择引擎架构、生成代码或进行代码审查时 |
 | game-full-workflow | 已有各模块策划案内容,需要构建GDD框架文档(模块索引表),或需要校验多模块策划案之间的一致性与前后逻辑时 |
 
-> 每个技能的 `SKILL.md` frontmatter `description` 字段包含完整的三段式说明(何时使用 + 能力 + 边界),LLM 通过 `list_skills` 工具获取后可直接据此选择。
+> 每个技能的 `SKILL.md` frontmatter `description` 字段包含完整的三段式说明(何时使用 + 边界 + 能力),LLM 通过 `list_skills` 工具获取后可直接据此选择;描述之间冲突或无先后顺序时,以返回结果末尾的 `ROUTING.md` 为准。
 
 ### game-creative-discussion:游戏创意框架完善工具
 
@@ -163,21 +164,31 @@ game-full-workflow(框架文档构建器+校验器) → 模块索引 + 前后逻
 
 | 工具 | 说明 | 典型调用时机 |
 |------|------|-------------|
-| `list_skills` | **首选入口**:列出所有技能的 name + description(含"何时使用 + 能力 + 边界") | 第一次调用,查看所有可用技能并选择 |
+| `list_skills` | **首选入口**:列出所有技能的 name + description(含"何时使用 + 边界 + 能力"),末尾自动附加 `ROUTING.md` 路由表 | 第一次调用,查看所有可用技能并选择 |
 | `get_skill` | 获取指定技能的完整 `SKILL.md` 内容(命中内存缓存时免重复读取) | 从 list_skills 选定后取完整工作流 |
 | `get_reference` | 获取技能的参考资料文件 | 需要详细领域知识时 |
 
 ### 推荐使用流程
 
 ```
-1. list_skills()                              → 获取所有技能的 name + description
-2. LLM 根据 description 的"何时使用"选择最匹配的技能
+1. list_skills()                              → 技能清单 + 描述 + 路由表
+2. LLM 结合 description 与路由表选择技能
+   ├── 只需 1 个技能  → 直接进入第 3 步
+   └── 需要 2 个以上  → 先报计划(顺序 / 各自产出 / 需用户提供的输入)
+                        等用户确认后再逐个调用
 3. get_skill("game-system-design")            → 获取完整 SKILL.md
 4. 按 SKILL.md 中的工作流路由表完成策划产出
 5. 如需组装:get_skill("game-full-workflow")  → 获取 GDD 框架文档构建器工作流
 ```
 
-**设计理念:** 不使用独立的路由工具。每个技能的 `description` 已包含"何时使用 + 能力说明 + 边界"三段式说明,LLM 可直接从 `list_skills` 返回结果中做语义匹配选择——这比基于关键词打分的路由器更准确,尤其能处理中文同义词和俚语场景(如"肉鸽"匹配 Roguelike)。
+**设计理念:** 技能选择**不做关键词打分**。每个技能的 `description` 已包含"何时使用 + 边界 + 能力"三段式说明,LLM 直接做语义匹配——这比基于关键词打分的路由器更准确,尤其能处理中文同义词和俚语场景(如"肉鸽"匹配 Roguelike)。
+
+`ROUTING.md` 不参与打分,它只补充 `description` 表达不了的两类信息:
+
+1. **强歧义对**——两个技能的描述互相冲突(如"难度曲线"同时被关卡和数值声称负责),或必须串联两个技能才能完成的事
+2. **组合顺序**——多技能时先做什么后做什么、哪些能跳过、什么时候该收口到 `game-full-workflow`
+
+它随 `list_skills` 一起返回,所以不会额外增加一次工具调用;修改后需重新发布才能生效。
 
 ## 在各 IDE 中配置
 
@@ -252,10 +263,12 @@ game-full-workflow(框架文档构建器+校验器) → 模块索引 + 前后逻
 
 ```
 new-skill/
-└── SKILL.md    ← 必须包含 frontmatter(name, description),description 采用"何时使用 + 能力说明 + 边界"三段式
+└── SKILL.md    ← 必须包含 frontmatter(name, description),description 采用"何时使用 + 边界 + 能力"三段式,边界靠前
 ```
 
 push 到 main 后，`sync-skills.sh` 会自动同步到 `mcp-server/skills/` 并打包发布。新技能会自动出现在 `list_skills` 的返回结果中。
+
+**若新技能与已有技能存在职责重叠，需同时更新根目录 `ROUTING.md` 的「强歧义对」小节。** 否则两个技能的描述会同时命中同一类需求，AI 只能靠猜。
 
 ## 本地开发
 
