@@ -1,6 +1,7 @@
 node_modules/
 dist/
 skills/
+ROUTING.md
 *.js.map
 *.d.ts.map
 .DS_Store

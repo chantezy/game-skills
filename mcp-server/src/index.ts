@@ -15,6 +15,16 @@ import { dirname, join } from "path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8"));
 
+// 显式路由表：优先读打包进来的 ROUTING.md，读不到则降级为纯 description 匹配
+function loadRoutingTable(): string | null {
+  try {
+    const content = readFileSync(join(__dirname, "../ROUTING.md"), "utf-8").trim();
+    return content || null;
+  } catch {
+    return null;
+  }
+}
+
 const server = new McpServer({
   name: "mcp-game-design",
   version: pkg.version,
@@ -25,7 +35,7 @@ const server = new McpServer({
 // LLM selects the best match based on description (When to use + capabilities).
 server.tool(
   "list_skills",
-  "列出所有可用的游戏设计技能及其描述。这是首选入口：先调用此工具查看所有技能的名称和“何时使用”描述，根据用户意图选择最匹配的技能后，再调用 get_skill 获取完整工作流。每个技能的 description 已包含“何时使用 + 能力说明 + 边界”三部分，可直接据此选择。",
+  "列出所有可用的游戏设计技能及其描述。这是首选入口：先调用此工具查看所有技能的名称和“何时使用”描述，根据用户意图选择最匹配的技能后，再调用 get_skill 获取完整工作流。每个技能的 description 已包含“何时使用 + 能力说明 + 边界”三部分，可直接据此选择。注意：选定技能后，若需要调用 2 个以上技能，必须先向用户说明执行计划并等待确认，再逐个调用 get_skill。",
   {},
   async () => {
     const skills = listSkills();
@@ -44,11 +54,19 @@ server.tool(
     const lines = skills.map(
       (s) => `- **${s.name}** — ${s.description || "(未设置描述)"}`,
     );
+    const routing = loadRoutingTable();
     const text =
       `# 可用游戏设计技能 (${skills.length})\n\n` +
-      `根据用户意图，从以下技能中选择最匹配的一个，然后调用 \`get_skill\` 获取完整工作流指令：\n\n` +
+      `## 执行前必须先做\n\n` +
+      `1. 选定技能后，**先报计划再执行**：只命中 1 个技能 → 直接调用 \`get_skill\` 开始工作；需要 2 个以上或走组合流程 → 先用 3-5 行说明「按什么顺序调用哪些技能 / 每个产出什么 / 需要用户先提供什么输入」，**等用户确认后**再逐个调用 \`get_skill\`。\n` +
+      `2. 意图不明确 → 先问一句，不要猜。\n\n` +
+      `## 技能清单\n\n` +
+      `根据用户意图，从以下技能中选择最匹配的，然后调用 \`get_skill\` 获取完整工作流指令：\n\n` +
       lines.join("\n") +
-      `\n\n---\n选择依据：每个技能的 description 包含“何时使用”（适用场景）、“能力”（产出内容）、“边界”（职责划分）三部分。若用户意图与多个技能相关，选择最核心的一个；若无法确定，可让用户明确具体方向。`;
+      `\n\n---\n选择依据：每个技能的 description 包含“何时使用”（适用场景）、“边界”（职责划分）、“能力”（产出内容）三部分。若用户意图与多个技能相关，选择最核心的一个；若无法确定，可让用户明确具体方向。` +
+      (routing
+        ? `\n\n---\n\n${routing}\n\n---\n**以本路由表为准**：路由表与 description 冲突时，按路由表执行。`
+        : "");
 
     return {
       content: [{ type: "text" as const, text }],

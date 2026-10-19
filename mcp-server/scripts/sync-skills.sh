@@ -40,3 +40,9 @@ if [ -f "$REPO_ROOT/README.md" ]; then
   cp "$REPO_ROOT/README.md" "$MCP_SERVER_DIR/README.md"
   echo "README.md 已同步到 mcp-server/"
 fi
+
+# 同步 ROUTING.md（显式路由表，会被 list_skills 工具读取并返回）
+if [ -f "$REPO_ROOT/ROUTING.md" ]; then
+  cp "$REPO_ROOT/ROUTING.md" "$MCP_SERVER_DIR/ROUTING.md"
+  echo "ROUTING.md 已同步到 mcp-server/"
+fi
