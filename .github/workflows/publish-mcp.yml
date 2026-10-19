@@ -22,6 +22,7 @@ on:
       - 'mcp-server/scripts/**'
       - 'game-*/**'
       - '*/SKILL.md'
+      - 'ROUTING.md'
       - 'README.md'
       - '.github/workflows/publish-mcp.yml'
   workflow_dispatch:  # 手动触发，便于调试
